@@ -1,0 +1,41 @@
+server {
+    listen 443 ssl;
+    server_name mcp.你的域名.com;
+
+    # Certbot 自动配置的 SSL 证书路径
+    ssl_certificate /etc/letsencrypt/live/mcp.你的域名.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mcp.你的域名.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # 核心映射：将外网的 /mcp 请求转发到本地运行的 Python MCP 服务 (8000端口)
+    location /mcp {
+        proxy_pass http://127.0.0.1:8000;
+        
+        # 必须使用 HTTP/1.1 以支持长连接和流式响应 (Streamable HTTP)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # 传递真实客户端 IP 和域名信息
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # 关掉代理缓冲，确保大模型调用工具时的实时流式响应不卡顿
+        proxy_buffering off;
+        proxy_cache off;
+        
+        # 延长超时时间，防止 AI 思考或查库时间稍长导致连接被 Nginx 强行断开
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+
+# 顺便配置 HTTP 自动重定向到 HTTPS
+server {
+    listen 80;
+    server_name mcp.你的域名.com;
+    return 301 https://$host$request_uri;
+}
